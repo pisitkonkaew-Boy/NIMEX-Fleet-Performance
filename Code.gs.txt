@@ -1,0 +1,103 @@
+/** NIMEX Pickup Vehicle Dashboard API — bound to the "NIMEX Pickup Database" spreadsheet.
+ *  Set Script Property ADMIN_KEY (Project Settings > Script Properties). The key is never stored in this file.
+ *  GET  : public data for the dashboard (rows + shared settings), cached for 6 hours.
+ *  POST : admin only (body.key must equal ADMIN_KEY) — auth, begin/append/finish (upload a report), settings.
+ */
+var COLS = ['day','b','c','e','g','h','t','k','l','n','o','p','q','r','s','u','v','x','y','aa','ab','ac','ad','ae','af','ag','ah','ai','aj'];
+var TABS = { rows: ['Rows', COLS], settings: ['Settings', ['key','json']], log: ['Log', ['time','action','detail']] };
+
+function ss_(){ return SpreadsheetApp.getActiveSpreadsheet(); }
+function tab_(k){
+  var s = ss_(), def = TABS[k], t = s.getSheetByName(def[0]);
+  if(!t){ t = s.insertSheet(def[0]); t.getRange(1, 1, 1, def[1].length).setValues([def[1]]).setFontWeight('bold'); t.setFrozenRows(1); }
+  return t;
+}
+function readAll_(k){ var t = tab_(k), n = t.getLastRow(), w = TABS[k][1].length; return n < 2 ? [] : t.getRange(2, 1, n - 1, w).getValues(); }
+function writeAll_(k, rows){
+  var t = tab_(k), n = t.getLastRow(), w = TABS[k][1].length;
+  if(n > 1) t.getRange(2, 1, n - 1, w).clearContent();
+  if(rows.length){ var r = t.getRange(2, 1, rows.length, w); r.setNumberFormat('@'); r.setValues(rows); }
+}
+function append_(k, rows){
+  if(!rows.length) return;
+  var t = tab_(k), w = TABS[k][1].length, r = t.getRange(t.getLastRow() + 1, 1, rows.length, w);
+  r.setNumberFormat('@'); r.setValues(rows);
+}
+function settings_(){ var o = {}; readAll_('settings').forEach(function(r){ try{ o[String(r[0])] = JSON.parse(r[1]); }catch(e){} }); return o; }
+function json_(o){ return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+function log_(a, d){ tab_('log').appendRow([new Date(), a, d]); }
+
+function publicData_(){
+  var rows = readAll_('rows').map(function(r){ return r.slice(1).map(function(v){ return v === null || v === undefined ? '' : String(v); }); });
+  return { cols: COLS.slice(1), rows: rows, settings: settings_(), updated: new Date().toISOString() };
+}
+
+// ---- cache: gzip + base64 split into 90 KB pieces (CacheService limit is 100 KB per key) ----
+var CK = 'pickup-data';
+function cacheGet_(){
+  var c = CacheService.getScriptCache(), n = c.get(CK + '-n'); if(!n) return null;
+  var keys = []; for(var i = 0; i < +n; i++) keys.push(CK + '-' + i);
+  var all = c.getAll(keys), b = '';
+  for(i = 0; i < keys.length; i++){ if(!all[keys[i]]) return null; b += all[keys[i]]; }
+  return Utilities.ungzip(Utilities.newBlob(Utilities.base64Decode(b), 'application/x-gzip')).getDataAsString('UTF-8');
+}
+function cachePut_(s){
+  var b = Utilities.base64Encode(Utilities.gzip(Utilities.newBlob(s, 'text/plain')).getBytes()), o = {}, n = 0;
+  for(var i = 0; i < b.length; i += 90000) o[CK + '-' + (n++)] = b.substr(i, 90000);
+  if(n <= 900){ o[CK + '-n'] = String(n); CacheService.getScriptCache().putAll(o, 21600); }
+}
+function cacheClear_(){ CacheService.getScriptCache().remove(CK + '-n'); }
+function warm_(){ var s = JSON.stringify(publicData_()); try{ cachePut_(s); }catch(e){} return s; }
+
+function doGet(){
+  var s = null;
+  try{ s = cacheGet_(); }catch(e){}
+  if(!s) s = warm_();
+  return ContentService.createTextOutput(s).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e){
+  var b;
+  try{ b = JSON.parse(e.postData.contents); }catch(x){ return json_({ ok:false, error:'bad_request' }); }
+  var key = PropertiesService.getScriptProperties().getProperty('ADMIN_KEY');
+  if(!key || !b.key || b.key !== key){ Utilities.sleep(1200); return json_({ ok:false, error:'denied' }); }
+  if(b.a === 'auth') return json_({ ok:true });
+  if(b.a === 'log') return json_({ ok:true, log: readAll_('log').slice(-50) });
+
+  var lock = LockService.getScriptLock();
+  if(!lock.tryLock(25000)) return json_({ ok:false, error:'busy' });
+  try{
+    if(b.a === 'begin'){
+      // remove every row whose dispatch day is in the uploaded file (re-uploads replace old values)
+      var set = {}; (b.days || []).forEach(function(d){ set[d] = 1; });
+      var t = tab_('rows'), n = t.getLastRow(), hit = 0;
+      if(n > 1){
+        var dayCol = t.getRange(2, 1, n - 1, 1).getValues();
+        for(var i = 0; i < dayCol.length; i++) if(set[String(dayCol[i][0])]){ hit++; }
+        if(hit){ writeAll_('rows', readAll_('rows').filter(function(r){ return !set[String(r[0])]; })); }
+      }
+      cacheClear_();
+      return json_({ ok:true, removed: hit });
+    }
+    if(b.a === 'append'){
+      var w = COLS.length, rows = (b.rows || []).filter(function(r){ return r && r.length === w; });
+      append_('rows', rows);
+      cacheClear_();
+      return json_({ ok:true, added: rows.length });
+    }
+    if(b.a === 'finish'){
+      log_('upload', (b.file || '') + ' · ' + (b.count || 0) + ' rows · ' + (b.days || []).length + ' days');
+      cacheClear_(); warm_();
+      return json_({ ok:true });
+    }
+    if(b.a === 'settings'){
+      var cur = settings_(), patch = b.settings || {};
+      Object.keys(patch).forEach(function(k){ cur[k] = patch[k]; });
+      writeAll_('settings', Object.keys(cur).map(function(k){ return [k, JSON.stringify(cur[k])]; }));
+      log_('settings', Object.keys(patch).join(', '));
+      cacheClear_(); warm_();
+      return json_({ ok:true });
+    }
+    return json_({ ok:false, error:'unknown' });
+  } finally { lock.releaseLock(); }
+}
