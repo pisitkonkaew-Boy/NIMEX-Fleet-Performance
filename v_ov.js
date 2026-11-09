@@ -1,0 +1,93 @@
+/* ---------- ภาพรวม: one screen across the five areas + cross-area analysis ---------- */
+function ovData(keep){keep=keep||keepFn();const o={};
+ if(MD.has.plan){const ds=datesFor('plan'),p=MD.plan(ds,keep).summary,pp=prevFor('plan'),q=pp?MD.plan(pp,keep).summary:null;o.plan={s:p,p:q,days:workDays(ds)}}
+ if(MD.has.perf){const ds=datesFor('perf'),a=MD.perfAgg(MD.perfTrips(ds,keep)),pp=prevFor('perf'),b=pp?MD.perfAgg(MD.perfTrips(pp,keep)):null;o.perf={a,b}}
+ if(MD.has.sla){const s=MD.slaOf(MD.slaRows(datesFor('sla'),keep)),pp=prevFor('sla'),q=pp?MD.slaOf(MD.slaRows(pp,keep)):null;o.sla={s,q}}
+ if(MD.has.cost){const c=MD.costAgg(MD.costRows(datesFor('cost'),keep)),pp=prevFor('cost'),q=pp?MD.costAgg(MD.costRows(pp,keep)):null;o.cost={d:MD.costPick(c,'dist','all'),r:MD.costPick(c,'recv','all'),pd:q&&MD.costPick(q,'dist','all'),pr:q&&MD.costPick(q,'recv','all')}}
+ if(MD.has.plan&&MD.has.perf){const ds=MD.cal.periodDates(S.mode,S.per).filter(d=>MD.pools.plan.includes(d)&&MD.pools.perf.includes(d)),R=MD.planVsActual(ds,keep);const p=R.list.reduce((a,x)=>a+x.p,0),a=R.list.reduce((a,x)=>a+x.a,0);o.pva={p,a,gap:a-p,pct:p?(a-p)/p*100:null,days:workDays(R.days)}}
+ return o}
+/* ---------- หน้าหลัก: figures for any group (all / Zone / DC), each as [รวม, AB, CC] ---------- */
+function ovCalc(level,keep,D,F={}){const kf=level==='zone'?(k=>MD.M.zoneOf(k)):level==='dc'?(k=>k):level==='grp'?(k=>MD.M.groupOf(k)):(()=>'all'),R={};
+ const g=k=>R[k]||(R[k]={key:k,pc:0,pn:0,cb:0,nb:0,pd:0,dcs:new Set(),dcA:new Set(),dcC:new Set(),T:[],S:[],C:[]});
+ if(D.plan)D.plan.forEach(d=>{let any=false;MD.plan([d],keep).dc.forEach(r=>{any=true;const o=g(kf(r.key));o.pc+=r.cold_cars;o.pn+=r.normal_cars;o.cb+=r.cold_bills;o.nb+=r.normal_bills;o.dcs.add(r.key);if(r.normal_bills)o.dcA.add(r.key);if(r.cold_bills)o.dcC.add(r.key)})});
+ if(D.perf)MD.perfTrips(D.perf,keep).forEach(t=>{if(!F.t||F.t(t))g(kf(t[5])).T.push(t)});
+ if(D.sla)MD.slaRows(D.sla,keep).forEach(r=>g(kf(r[1])).S.push(r));
+ if(D.cost)MD.costRows(D.cost,keep).forEach(r=>{if(!F.c||F.c(r))g(kf(r[1])).C.push(r)});
+ return Object.values(R).map(o=>{const A=MD.perfAgg(o.T),VA=MD.perfAgg(o.T.filter(t=>!isColdVt(t[6]))),VC=MD.perfAgg(o.T.filter(t=>isColdVt(t[6]))),hasP=!!D.plan&&o.dcs.size>0,hasT=!!D.perf&&o.T.length>0;
+  const s=MD.slaOf(o.S),sa=MD.slaOf(o.S.filter(r=>r[2]==='AB')),sc=MD.slaOf(o.S.filter(r=>r[2]==='CC')),c=MD.costAgg(o.C),cp=(f,x,y='pct')=>o.C.length?MD.costPick(c,f,x)[y]:null,c3=(f,y)=>[cp(f,'all',y),cp(f,'AB',y),cp(f,'CC',y)],cq=(f,n,d)=>['all','AB','CC'].map(x=>{if(!o.C.length)return null;const t=MD.costPick(c,f,x);return t[d]?t[n]/t[d]:null});
+  const plan=hasP?[o.pc+o.pn,o.pn,o.pc]:[null,null,null],act=hasT?[A.trips,VA.trips,VC.trips]:[null,null,null],bills=hasP?[o.cb+o.nb,o.nb,o.cb]:[null,null,null],dv=(a,b)=>a!=null&&b?a/b:null;
+  return{key:o.key,name:level==='dc'?MD.M.name(o.key):o.key,zone:level==='dc'?MD.M.zoneOf(o.key):'',plan,act,gap:plan.map((p,i)=>p!=null&&act[i]!=null?act[i]-p:null),bpcP:bills.map((b,i)=>dv(b,plan[i])),bpcA:hasT?[A.bpt,VA.bpt,VC.bpt]:[null,null,null],
+   dcs:hasP?[o.dcs.size,o.dcA.size,o.dcC.size]:[null,null,null],bills,eff:hasT?[A.eff,A.effA,A.effC]:[null,null,null],effx:hasT?[A.effx,A.effxA,A.effxC]:[null,null,null],bpt:hasT?[A.bpt,VA.bpt,VC.bpt]:[null,null,null],dpt:hasT?[A.dpt,VA.dpt,VC.dpt]:[null,null,null],
+   ppt:hasT?[A.ppt,VA.ppt,VC.ppt]:[null,null,null],pdpt:hasT?[A.pdpt,VA.pdpt,VC.pdpt]:[null,null,null],trips:act,km:hasT?[A.km,VA.km,VC.km]:[null,null,null],
+   sla:[0,1,2,3].map(i=>o.S.length?[s.d[i],sa.d[i],sc.d[i]]:[null,null,null]),cd:[cp('dist','all'),cp('dist','AB'),cp('dist','CC')],cr:[cp('recv','all'),cp('recv','AB'),cp('recv','CC')],cdc:c3('dist','c'),cdr:c3('dist','r'),crc:c3('recv','c'),crr:c3('recv','r'),dpb:cq('dist','c','b'),dpp:cq('dist','c','x'),rpb:cq('recv','c','b'),rpp:cq('recv','c','x'),
+   revpt:hasT?[A.revpt,VA.revpt,VC.revpt]:[null,null,null],wagept:hasT?[A.wagept,VA.wagept,VC.wagept]:[null,null,null],tm:hasT?[A.tm,VA.tm,VC.tm]:[null,null,null]}})}
+const ovDates=prev=>{const o={};['plan','perf','sla','cost'].forEach(k=>{if(!MD.has[k]){o[k]=null;return}const d=prev?prevFor(k):datesFor(k);o[k]=d&&d.length?d:null});return o};
+const ovAll=(keep,prev)=>{const D=ovDates(prev);if(prev&&!D.plan&&!D.perf&&!D.sla&&!D.cost)return null;return ovCalc('all',keep,D)[0]||null};
+const NUL=[null,null,null];
+const tmNote=c=>{const tm=c&&c.tm?c.tm[0]:null,tr=c&&c.trips?c.trips[0]:null;return tm==null||!tr?'NIMEX06006':`NIMEX06006 · จับคู่ ${fmtN(tm)}/${fmtN(tr)} เที่ยว`};
+/* days covered by the plan (Control Board) and by the trips (NIMEX026001) in the selected period */
+function covNote(){const p=(datesFor('plan')||[]).filter(d=>!isSun(d)),t=(datesFor('perf')||[]).filter(d=>!isSun(d));if(!p.length||!t.length)return'';const mp=p.filter(d=>!t.includes(d)),mt=t.filter(d=>!p.includes(d));
+ if(!mp.length&&!mt.length)return`ข้อมูลครบทั้งสองด้าน ${p.length} วันทำการ`;return[mp.length?`ไม่มีเที่ยววิ่ง ${mp.map(shortLabel).join(', ')}`:'',mt.length?`ไม่มีแผน ${mt.map(shortLabel).join(', ')}`:''].filter(Boolean).join(' · ')}
+/* tile: v,p = [รวม, AB, CC]. kind: pct (change in points), n (count), x (per car) */
+function ovTile2(t,cur,prv,hero){const v=cur&&cur[t.k]?(t.i!=null?cur[t.k][t.i]:cur[t.k]):NUL,p=prv&&prv[t.k]?(t.i!=null?prv[t.k][t.i]:prv[t.k]):null,f=t.kind==='pct'?(x=>fmtP(x)):t.kind==='x'?fmt1:t.kind==='x2'?fmt2:(x=>(t.sign&&x>0?'+':'')+fmtN(x)),pp=t.kind==='pct';
+ const dl=(a,b)=>{if(a==null||b==null)return'';const d=delta(a,b);if(d&&t.abs)d.pc=null;return arrow(d,t.hi,pp)},g=t.grade?MD.grade(t.single!=null?v[t.single]:v[0],t.grade):null,main=t.single!=null?v[t.single]:v[0],pm=p?(t.single!=null?p[t.single]:p[0]):null;
+ const st=t.st?stOf(t.st,main):g?(g==='A'||g==='B'?'g':g==='C'?'w':'c'):'';
+ const sb=(n,a,b,hi,ff)=>`<span>${n}<b>${a==null?'–':ff(a)}</b><i>${b!=null&&a!=null?arrow(delta(a,b),hi,ff===f&&pp)||'&nbsp;':'&nbsp;'}</i></span>`;
+ const sub=`<div class="k-ab">${t.sub?t.sub.map(([n,k,hi])=>sb(n,cur&&cur[k]?cur[k][t.single]:null,prv&&prv[k]?prv[k][t.single]:null,hi,fmtM)).join(''):[['AB',1],['CC',2]].map(([n,i])=>sb(n,v[i],p?p[i]:null,t.hi,f)).join('')}</div>`,note=t.noteFn?t.noteFn(cur):t.note||'';
+ return`<div class="kpi${hero?' hero':''}"${st?` style="--bar:var(--st-${st})"`:''}><span class="kpi-ic">${ic(t.ic)}</span>${g?`<span class="g" style="--bar:var(--g${g})">${g}</span>`:''}<div class="l">${esc(t.l)}</div><div class="v">${main==null?'–':esc(f(main))} <small>${esc(t.unit||'')}</small></div><div class="d kn" title="${esc(note)}">${note?esc(note):'&nbsp;'}</div>${sub}<div class="d kc">${pm!=null&&main!=null?`ก่อนหน้า ${esc(f(pm))} ${dl(main,pm)}`:'<span class="nt">ไม่มีช่วงก่อนหน้าให้เทียบ</span>'}</div></div>`}
+const OVB={
+ hero:[{k:'eff',l:'ประสิทธิภาพ ทุกสาเหตุ',ic:'target',kind:'pct',hi:true,st:'eff'},{k:'sla',i:0,l:'SLA ทุกสาเหตุ',ic:'clock',kind:'pct',hi:true,st:'sla'},{k:'cd',l:'%ต้นทุนกระจาย',ic:'coin',kind:'pct',hi:false,grade:'dist'},{k:'cr',l:'%ต้นทุนเข้ารับ',ic:'up',kind:'pct',hi:false,grade:'recv'}],
+ plan:[{k:'plan',l:'จำนวนรถตามแผน',ic:'cal',kind:'n',unit:'คัน',note:'รวมรถที่ต้องใช้รายวัน'},{k:'act',l:'จำนวนรถใช้จริง',ic:'truck',kind:'n',unit:'เที่ยว',note:'กระจาย+เข้ารับ · 042 = CC'},{k:'bpcP',l:'บิลต่อคันตามแผน',ic:'bill',kind:'x',unit:'บิล',hi:true},{k:'bpcA',l:'บิลต่อคันจริง',ic:'bill',kind:'x',unit:'บิล',hi:true,note:'บิลบนรถ ÷ เที่ยวจริง'},
+],
+ perf:[{k:'eff',l:'ประสิทธิภาพ ทุกสาเหตุ',ic:'target',kind:'pct',hi:true,st:'eff'},{k:'effx',l:'ประสิทธิภาพ รวมสาเหตุลูกค้า',ic:'check',kind:'pct',hi:true,st:'effx'},{k:'bpt',l:'บิลรวม/คัน',ic:'bill',kind:'x',unit:'บิล',hi:true},{k:'dpt',l:'บิลส่งได้/คัน',ic:'check',kind:'x',unit:'บิล',hi:true},
+  {k:'ppt',l:'กล่องรวม/คัน',ic:'box',kind:'x',unit:'กล่อง',hi:true},{k:'pdpt',l:'กล่องส่งได้/คัน',ic:'box',kind:'x',unit:'กล่อง',hi:true},{k:'revpt',l:'รายได้ต่อเที่ยว',ic:'coin',kind:'n',unit:'บาท',hi:true,noteFn:c=>tmNote(c)},{k:'wagept',l:'ค่าจ้างต่อเที่ยว',ic:'truck',kind:'n',unit:'บาท',hi:false,noteFn:c=>tmNote(c)}],
+ cpu:[['dpb','ต้นทุนกระจาย บาท/บิล','bill'],['dpp','ต้นทุนกระจาย บาท/ชิ้น','box'],['rpb','ต้นทุนเข้ารับ บาท/บิล','bill'],['rpp','ต้นทุนเข้ารับ บาท/ชิ้น','box']].map(([k,l,icn])=>({k,l,ic:icn,kind:'x2',unit:'บาท',hi:false,note:'ต้นทุน ÷ '+(k.endsWith('b')?'บิล':'ชิ้น')+' · NIMEX06006'})),
+ sla:[0,1,2,3].map(i=>({k:'sla',i,l:SLA_LABELS[i],ic:['target','clock','pin','dc'][i],kind:'pct',hi:true,st:'sla'})),
+ cost:[['cd',1,'%ต้นทุน กระจาย AB','dist','box'],['cd',2,'%ต้นทุน กระจาย CC','dist','snow'],['cr',1,'%ต้นทุน เข้ารับ AB','recv','up'],['cr',2,'%ต้นทุน เข้ารับ CC','recv','up']].map(([k,i,l,g,icn])=>({k,single:i,l,ic:icn,kind:'pct',hi:false,grade:g,note:'ต้นทุน ÷ รายได้ · ล้านบาท',sub:[['ต้นทุน',k==='cd'?'cdc':'crc',false],['รายได้',k==='cd'?'cdr':'crr',true]]}))};
+const ovRow=(list,cur,prv,cls='',hero)=>`<div class="kpis ${cls}">${list.map(t=>ovTile2(t,cur,prv,hero)).join('')}</div>`;
+const ovFrame=(t,ic0,body)=>`<section class="card ovf"><h2><span class="ovf-ic">${ic(ic0)}</span>${esc(t)}</h2>${body}</section>`;
+VIEW.ov=()=>{const k=keepFn(),cur=ovAll(k,false),prv=ovAll(k,true);if(!cur)return head()+emptyCard();
+ return`${head()}${ovFrame('ภาพรวม','star',ovRow(OVB.hero,cur,prv,'hero-row',1))}
+ ${ovFrame('ผลสำคัญ แผนการใช้รถ','cal',ovRow(OVB.plan,cur,prv))}
+ ${ovFrame('ผลสำคัญ การใช้รถและการจัดส่ง','truck',ovRow(OVB.perf,cur,prv))}
+ ${ovFrame('ผลสำคัญ SLA และต้นทุน','clock',ovRow(OVB.sla,cur,prv)+ovRow(OVB.cost,cur,prv)+ovRow(OVB.cpu,cur,prv))}
+ <p class="note" style="text-align:left;margin:-4px 0 0">AB / CC: ประสิทธิภาพตามบิลแห้ง/เย็น (รวมสาเหตุลูกค้าแบ่งบิลลูกค้าไม่รับตามบิลที่ส่งไม่ได้ของแต่ละเที่ยว) · รถใช้จริง บิล/คัน กล่อง/คัน รายได้/เที่ยว ค่าจ้าง/เที่ยว แยกตามชนิดรถ (042 = CC) · รายได้และค่าจ้างต่อเที่ยวจาก NIMEX06006 จับคู่ตามเลขที่ใบรายการ · ผลต่างเทียบ${esc(prevLabel())}</p>
+ ${ovTable()}${updAll()}`};
+const prevLabel=()=>({day:'วันเดียวกันสัปดาห์ก่อน',week:'สัปดาห์ก่อน (วันเท่ากัน)',month:'เดือนก่อน (วันทำการเท่ากัน)'})[S.mode];
+function updAll(){const U=lastUploads();return U.length?`<p class="upd">ข้อมูลล่าสุด: ${U.map(u=>`${esc(u[0])} ${esc(u[3])} (เติม ${esc(u[5])})`).join(' · ')}</p>`:''}
+/* one table, every area: Zone rows, or the DCs of the chosen Zone */
+const OVC=[['plan','แผนการใช้รถ',[['plan','รถตามแผน','n'],['act','รถใช้จริง','n'],['gap','ส่วนต่าง จริง−แผน','n'],['bpcP','บิล/คัน แผน','x',0,true],['bpcA','บิล/คัน จริง','x',0,true],['dcs','DC','n'],['bills','บิลที่ต้องส่ง','n']]],
+ ['perf','การใช้รถและการจัดส่ง',[['eff','ประสิทธิภาพ ทุกสาเหตุ','pct','eff',true],['effx','รวมสาเหตุลูกค้า','pct','effx',true],['bpt','บิลรวม/คัน','x',0,true],['dpt','บิลส่งได้/คัน','x',0,true],['ppt','กล่องรวม/คัน','x',0,true],['pdpt','กล่องส่งได้/คัน','x',0,true],['revpt','รายได้/เที่ยว','n',0,true],['wagept','ค่าจ้าง/เที่ยว','n',0,false],['trips','เที่ยววิ่ง','n'],['km','ระยะทาง','n']]],
+ ['sla','SLA',[0,1,2,3].map(i=>['sla'+i,SLA_LABELS[i].replace('SLA ',''),'pct','sla',true])],
+ ['cost','ต้นทุน',[['cd','%ต้นทุนกระจาย','pct','g:dist',false],['cdc','ต้นทุนกระจาย (ล้าน)','m',0,false],['cdr','รายได้กระจาย (ล้าน)','m',0,true],['cr','%ต้นทุนเข้ารับ','pct','g:recv',false],['crc','ต้นทุนเข้ารับ (ล้าน)','m',0,false],['crr','รายได้เข้ารับ (ล้าน)','m',0,true],['dpb','กระจาย บาท/บิล','x2',0,false],['dpp','กระจาย บาท/ชิ้น','x2',0,false],['rpb','เข้ารับ บาท/บิล','x2',0,false],['rpp','เข้ารับ บาท/ชิ้น','x2',0,false]]]];
+function ovTable(){const ti={'':0,AB:1,CC:2}[S.ovbt||''],G=OVC.find(g=>g[0]===S.ovg)||OVC[0],dcMode=!!S.zone,keep=keepFn({zone:dcMode?S.zone:'',dc:''}),lv=dcMode?'dc':'zone',D=ovDates(false),Dp=ovDates(true),hasP=Dp.plan||Dp.perf||Dp.sla||Dp.cost;
+ const rows=ovCalc(lv,keep,D).filter(r=>r.key!=='?'),tot=ovCalc('all',keep,D)[0],pm=new Map(hasP?ovCalc(lv,keep,Dp).map(r=>[r.key,r]):[]),ptot=hasP?ovCalc('all',keep,Dp)[0]:null;
+ const order=dcMode?null:MD.M.zones;rows.sort((a,b)=>dcMode?(+a.key- +b.key):order.indexOf(a.key)-order.indexOf(b.key));
+ const val=(r,c)=>{if(!r)return null;const k=c[0];if(k.startsWith('sla'))return r.sla[+k.slice(3)][ti];return(r[k]||NUL)[ti]};
+ const fm=(c,v)=>c[2]==='pct'?fmtP(v):c[2]==='x'?fmt1(v):c[2]==='x2'?fmt2(v):c[2]==='m'?fmtM(v):(c[0]==='gap'&&v>0?'+':'')+fmtN(v);
+ const cell=(r,c,pr)=>{const v=val(r,c);if(v==null)return'<td>–</td>';const s=c[3],txt=fm(c,v),pv=val(pr,c),dd=pv==null?'':c[0]==='gap'?(()=>{const x=delta(v,pv);if(x)x.pc=null;return arrow(x,null,false)})():arrow(delta(v,pv),c[4]??null,c[2]==='pct');
+  const main=s&&s.startsWith('g:')?`${txt} ${gradeChip(MD.grade(v,s.slice(2)))}`:s?badge(s,v,txt):txt;return`<td>${main}<small class="dl">${dd||'&nbsp;'}</small></td>`};
+ const cols=G[2],act=r=>dcMode?'ovd:'+r.key:'zone:'+r.key;
+ return card(dcMode?`DC ใน Zone ${S.zone}`:'ผลราย Zone ทุกมิติ',dcMode?'กด DC เพื่อกรองทั้งหน้าตาม DC นั้น · กดปุ่มด้านล่างเพื่อกลับไปดูทุก Zone':'กด Zone เพื่อกรองทั้งหน้า และดู DC ใน Zone นั้น',
+  `<div class="tools ovtools"><div class="seg2" role="group" aria-label="ประเภทบิล">${[['','รวม'],['AB','AB'],['CC','CC']].map(([x,t])=>`<button data-act="set:ovbt=${x}"${x?` class="bt-${x.toLowerCase()}"`:''} aria-pressed="${(S.ovbt||'')===x}">${t}</button>`).join('')}</div>${dcMode?`<button class="btn alt" data-act="clr:zone">← กลับไปดูทุก Zone</button>`:''}
+  <div class="seg2 ovdim" role="group" aria-label="ด้านที่แสดง">${OVC.map(g=>`<button data-act="set:ovg=${g[0]}" aria-pressed="${G===g}">${esc(g[1])}</button>`).join('')}</div></div>
+  <div class="tw ovtw"><table class="t ovt2"><thead><tr><th rowspan="2">${dcMode?'DC':'Zone'}</th><th colspan="${cols.length}" class="grp">${esc(G[1])}</th></tr><tr>${cols.map(c=>`<th>${esc(c[1])}</th>`).join('')}</tr></thead>
+  <tbody>${rows.map(r=>`<tr data-act="${esc(act(r))}" tabindex="0"${S.dc===r.key?' class="sel"':''}><td>${esc(dcMode?r.name:r.key)}</td>${cols.map(c=>cell(r,c,pm.get(r.key))).join('')}</tr>`).join('')}${tot?`<tr class="sum"><td>รวม</td>${cols.map(c=>cell(tot,c,ptot)).join('')}</tr>`:''}</tbody></table></div>
+  <p class="note" style="text-align:left">${ti?`แสดงเฉพาะ ${ti===1?'AB (Normal / แห้ง)':'CC (Cold Chain / เย็น)'}`:'แสดงผลรวม AB + CC'} · ตัวเล็กใต้ค่า = เทียบ${esc(prevLabel())}${G[0]==='cost'?' · ต้นทุนเป็น % ของรายได้ประเภทนั้น':''}</p>`)}
+ACT.ovd=v=>{S.dc=S.dc===v?'':v;render(1)};
+function lastUploads(){const m={};(window.DATA.uploads||[]).forEach(u=>{const k=(NXP.REPORTS[u[0]]||{}).kind==='bills'?'bills':u[0];if(!m[k]||String(u[5])>String(m[k][5]))m[k]=u});return Object.values(m)}
+/* scorecard: every area for each Zone / DC / group, flags = metrics in the "ควรแก้ไข" band */
+function scoreRows(level){const keep=keepFn(level==='dc'?{dc:''}:{zone:'',dc:''}),kf=level==='zone'?(k=>MD.M.zoneOf(k)):level==='group'?(k=>MD.M.groupOf(k)):(k=>k),R={};
+ const get=k=>R[k]||(R[k]={key:k,name:level==='dc'?MD.M.name(k):k,zone:level==='dc'?MD.M.zoneOf(k):'',grp:level==='dc'?MD.M.groupOf(k):''});
+ if(MD.has.plan){const g=groupBy(MD.plan(datesFor('plan'),keep).dc,r=>kf(r.key));g.forEach((L,k)=>{const tb=L.reduce((a,r)=>a+r.total_bills,0),tc=L.reduce((a,r)=>a+r.total_cars,0),cap=L.reduce((a,r)=>a+r.total_cars*r.pa,0);Object.assign(get(k),{avg:tc?r1(tb/tc):null,util:cap?Math.round(tb/cap*100):null,cars:tc})})}
+ if(MD.has.perf)groupBy(MD.perfTrips(datesFor('perf'),keep),t=>kf(t[5])).forEach((L,k)=>{const a=MD.perfAgg(L);Object.assign(get(k),{eff:a.eff,effx:a.effx,bpt:a.bpt,trips:a.trips})});
+ if(MD.has.sla)groupBy(MD.slaRows(datesFor('sla'),keep),r=>kf(r[1])).forEach((L,k)=>{const s=MD.slaOf(L);Object.assign(get(k),{s0:s.d[0],s1:s.d[1],s2:s.d[2],s3:s.d[3]})});
+ if(MD.has.cost)groupBy(MD.costRows(datesFor('cost'),keep),r=>kf(r[1])).forEach((L,k)=>{const c=MD.costAgg(L);Object.assign(get(k),{cd:MD.costPick(c,'dist','all').pct,cr:MD.costPick(c,'recv','all').pct})});
+ if(MD.has.plan&&MD.has.perf){const ds=MD.cal.periodDates(S.mode,S.per).filter(d=>MD.pools.plan.includes(d)&&MD.pools.perf.includes(d));groupBy(MD.planVsActual(ds,keep).list,o=>kf(o.key)).forEach((L,k)=>{const p=L.reduce((a,o)=>a+o.p,0),a=L.reduce((a,o)=>a+o.a,0);get(k).gap=p?(a-p)/p*100:null})}
+ return Object.values(R).filter(r=>!MD.M.hidden(r.key)&&r.key!=='?').map(r=>{const f=[];if(stOf('eff',r.eff)==='c')f.push('ประสิทธิภาพ');if(stOf('sla',r.s0)==='c')f.push('SLA');if(MD.grade(r.cd,'dist')==='F')f.push('ต้นทุนกระจาย');if(r.gap!=null&&Math.abs(r.gap)>MD.ST.planGap.warn*2)f.push('ห่างจากแผน');r.flags=f;return r})}
+const AMET={avg:['เฉลี่ยบิล/คัน (แผน)',1,r=>fmtA(r.avg)],eff:['ประสิทธิภาพ ทุกสาเหตุ',1,r=>badge('eff',r.eff)],effx:['ประสิทธิภาพ รวมสาเหตุลูกค้า',1,r=>badge('effx',r.effx)],bpt:['บิลรวม/คัน',1,r=>fmt1(r.bpt)],s0:['SLA ทุกสาเหตุ',1,r=>badge('sla',r.s0)],s1:['SLA ทุกสาเหตุรวมลูกค้า',1,r=>badge('sla',r.s1)],s2:['SLA DC ปลายทาง',1,r=>badge('sla',r.s2)],cd:['%ต้นทุนกระจาย',-1,r=>r.cd==null?'–':fmtP(r.cd)+' '+gradeChip(MD.grade(r.cd,'dist'))],cr:['%ต้นทุนเข้ารับ',-1,r=>r.cr==null?'–':fmtP(r.cr)+' '+gradeChip(MD.grade(r.cr,'recv'))],gap:['ต่างจากแผน (%)',0,r=>r.gap==null?'–':fmtP(r.gap,1)]};
+VIEW.an=()=>{const R=scoreRows(S.adim),m=AMET[S.amet]||AMET.eff,k=S.amet in AMET?S.amet:'eff',val=r=>m[1]===0?(r.gap==null?null:Math.abs(r.gap)):r[k],L=R.filter(r=>val(r)!=null).sort((a,b)=>m[1]===1?val(a)-val(b):val(b)-val(a));
+ const nm={zone:'Zone',dc:'DC',group:'กลุ่ม'}[S.adim];
+ return`${head()}${card('ผลการวิเคราะห์','เลือกมิติและตัวชี้วัด · เรียงจากแย่ไปดี · ตารางรวมทุกด้านเพื่อดูภาพเดียวกัน',`<div class="tools"><div class="seg2" role="group" aria-label="มิติ">${[['zone','Zone'],['dc','DC'],['group','กลุ่ม']].map(([x,t])=>`<button data-act="set:adim=${x}" aria-pressed="${S.adim===x}">${t}</button>`).join('')}</div><select data-set="amet" aria-label="ตัวชี้วัด">${Object.entries(AMET).map(([x,[t]])=>`<option value="${x}"${k===x?' selected':''}>${esc(t)}</option>`).join('')}</select></div>
+ ${L.length?chart((W,H,P)=>hbars({items:L.slice(0,15).map((r,i)=>({l:S.adim==='dc'?shortDC(r.name):r.name,v:Math.abs(r[k]??0),c:i<3?P.bad:P.s[0],txt:k==='avg'?fmtA(r.avg):k==='bpt'?fmt1(r.bpt):fmtP(r[k],k==='gap'?1:2),tip:`${r.name}${r.zone?' ('+r.zone+')':''}\n${m[0]}`,act:S.adim==='dc'?'fdc:'+r.key:S.adim==='zone'?'zone:'+r.key:'group:'+r.key})),P,W,labelW:Math.min(150,W*.34),valW:70,fmt:v=>String(r1(v))}),0,10,999):'<p class="empty">ไม่มีข้อมูลตัวชี้วัดนี้ในช่วงที่เลือก</p>'}
+ ${tableHtml('ant',[{k:'name',t:nm,v:r=>S.adim==='dc'?+r.key:r.name,f:r=>esc(r.name)+(S.adim==='dc'?`<br><span class="loc">${esc(r.zone)} · ${esc(r.grp)}</span>`:''),l:1},...Object.entries(AMET).map(([x,[t,,f]])=>({k:x,t,v:r=>x==='gap'&&r.gap!=null?Math.abs(r.gap):r[x],f}))],L,{sort:{k,d:m[1]===1?1:-1},act:r=>S.adim==='dc'?'fdc:'+r.key:S.adim==='zone'?'zone:'+r.key:'group:'+r.key,count:1})}`)}`};
