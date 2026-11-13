@@ -312,3 +312,7 @@ table.ovt2 tbody tr.sum td:first-child{background:inherit}
 .tw.cmp2 table.t td{padding:5px 5px;font-size:12px}.tw.cmp2 table.t th{font-size:11.5px}.tw.cmp2 table.t th button{padding:7px 5px}
 .tw.cmp3 table.t td{padding:4px 3px;font-size:11px}.tw.cmp3 table.t th{font-size:10.5px}.tw.cmp3 table.t th button{padding:6px 3px}.tw.cmp3 .loc{font-size:10px}
 .tw.cmp3 .bd,.tw.cmp2 .bd{padding-inline:4px}
+/* 16:9 settings */
+.i169slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.i169slot{display:grid;gap:6px;padding:10px;border:1px solid var(--line);border-radius:10px}.i169slot select{width:100%;min-height:38px}.i169slot .sm{font-size:12.5px;color:var(--muted);display:grid;gap:4px}
+.i169g input{width:72px;min-height:34px;text-align:right}.i169g td,.i169g th{padding:4px 6px}

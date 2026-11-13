@@ -23,7 +23,7 @@ function gbars({labels,series,fmt=ax,lab=fmt,W=720,H=280,P,acts,base=0,tips}){co
  const all=series.flatMap(s=>s.vals).filter(Number.isFinite);let mx=niceMax(Math.max(0,...all)),mn=0;
  if(base==='auto'&&all.length){const lo=Math.min(...all),hi=Math.max(...all),pad=Math.max((hi-lo)*.35,hi*.01);mn=Math.max(0,Math.floor(lo-pad));mx=Math.ceil(hi+pad*.6);if(mx<=mn)mx=mn+1}
  const y=v=>m.t+ih*(1-(Math.max(mn,v)-mn)/(mx-mn)),cw=iw/Math.max(1,n),gw=cw*.78,bw=Math.max(3,Math.min(40,gw/k-3)),s=[`<svg viewBox="0 0 ${W} ${H}" role="img" ${FNT}>`];
- yGrid(s,m,W,y,mn,mx,P,fmt);const showV=bw>=22;
+ yGrid(s,m,W,y,mn,mx,P,fmt);if(mn>0)s.push(`<text x="${m.l}" y="12" font-size="11.5" fill="${P.muted}">แกนเริ่มที่ ${esc(fmt(mn))}</text>`);const showV=bw>=22;
  labels.forEach((l,i)=>{const cx=m.l+cw*i+cw/2,x0=cx-(bw+3)*k/2;let g='';series.forEach((se,j)=>{const v=se.vals[i];if(!Number.isFinite(v))return;const x=x0+j*(bw+3),yy=y(v);g+=`<rect x="${x}" y="${yy}" width="${bw}" height="${Math.max(0,y(mn)-yy)}" rx="3" fill="${se.color}"/>`;if(showV)g+=`<text x="${x+bw/2}" y="${yy-5}" text-anchor="middle" font-size="${bw>=34?12:10.5}" fill="${P.ink}">${esc(lab(v))}</text>`});
   const tip=tips?tips[i]:l+'\n'+series.map(se=>se.name+': '+lab(se.vals[i])).join('\n');
   s.push(`<g data-tip="${esc(tip)}"${acts&&acts[i]?` data-act="${esc(acts[i])}" style="cursor:pointer"`:''}><rect x="${m.l+cw*i}" y="${m.t}" width="${cw}" height="${ih}" fill="transparent"/>${g}</g>`);

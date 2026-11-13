@@ -8,7 +8,7 @@ async function api(body){const r=await fetch(window.FLEET_API,{method:'POST',hea
 window.api=api;
 const bootMsg=h=>{const b=document.getElementById('boot');b.hidden=false;b.innerHTML=h};
 function askKey(err){bootMsg(`<h1>ผู้ดูแลระบบ</h1>${err?`<p class="badt">${err}</p>`:''}<label for="adm-key">รหัสผู้ดูแล</label><input id="adm-key" type="password" autocomplete="current-password"><button class="btn" id="adm-go">เข้าสู่ระบบ</button><a href="./" class="msg">กลับหน้า Dashboard</a>`);const go=async()=>{const v=document.getElementById('adm-key').value;try{sessionStorage.setItem(KEY,v)}catch(e){}try{await api({a:'auth'});location.reload()}catch(e){try{sessionStorage.removeItem(KEY)}catch(x){}askKey('รหัสไม่ถูกต้อง')}};document.getElementById('adm-go').onclick=go;document.getElementById('adm-key').onkeydown=e=>{if(e.key==='Enter')go()};document.getElementById('adm-key').focus()}
-const load=src=>new Promise((res,rej)=>{const s=document.createElement('script');s.src=src+'?v='+(window.FLEET_V||2);s.onload=res;s.onerror=rej;document.body.appendChild(s)});
+const load=src=>new Promise((res,rej)=>{const s=document.createElement('script');s.src=src+'?v='+(window.FLEET_V||3);s.onload=res;s.onerror=rej;document.body.appendChild(s)});
 window.loadLib=src=>new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('lib'));document.head.appendChild(s)});
 const url=q=>window.FLEET_API+(window.FLEET_API.includes('?')?'&':'?')+q;
 async function start(){const wantAdmin=location.hash==='#admin',key=getKey();
@@ -22,7 +22,7 @@ async function start(){const wantAdmin=location.hash==='#admin',key=getKey();
  if(!D.dcs.length&&!window.ADMIN){bootMsg('<h1>ยังไม่มีข้อมูล</h1><p>ผู้ดูแลระบบยังไม่ได้นำเข้าข้อมูล</p>');return}
  document.getElementById('boot').hidden=true;document.getElementById('app').hidden=false;
  try{for(const f of ['model.js','ui.js','v_ov.js','v_plan.js','v_perf.js','v_sla.js','v_cost.js','v_graph.js'])await load(f);
-  if(window.ADMIN){await load('export.js');await load('admin.js')}
+  if(window.ADMIN){await load('export.js');await load('share.js');await load('admin.js')}
   window.startApp();let sv=null;try{sv=sessionStorage.getItem('nimex-view');sessionStorage.removeItem('nimex-view')}catch(e){}if(window.ADMIN&&(sv||!D.dcs.length))ACT.nav(sv||'up')}catch(e){bootMsg('<h1>เปิด Dashboard ไม่สำเร็จ</h1><p>ลองเปิดหน้านี้ใหม่อีกครั้ง</p>');console.error(e)}}
 window.addEventListener('hashchange',()=>{if(location.hash==='#admin'&&!window.ADMIN)location.reload()});
 start();
