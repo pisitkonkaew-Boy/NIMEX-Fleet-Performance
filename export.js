@@ -1,5 +1,6 @@
 /* ---------- share + export (admin only). Every file uses the filters selected now ---------- */
-const LIB={xlsx:'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',pptx:'https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js'};
+/* cdnjs does not host the pptxgenjs bundle; each library has a second source in case the first is unreachable */
+const LIB={xlsx:['https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js','https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'],pptx:['https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js','https://unpkg.com/pptxgenjs@3.12.0/dist/pptxgen.bundle.js']};
 const blob64=b=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result);f.readAsDataURL(b)});
 let LOGO='';fetch('logo.png').then(r=>r.blob()).then(blob64).then(u=>LOGO=u).catch(()=>{});
 const NAVY='#0a2a5e',GOLD='#d4af37',INK='#0b1f3f',MUT='#55657f';

@@ -8,14 +8,15 @@ async function api(body){const r=await fetch(window.FLEET_API,{method:'POST',hea
 window.api=api;
 const bootMsg=h=>{const b=document.getElementById('boot');b.hidden=false;b.innerHTML=h};
 function askKey(err){bootMsg(`<h1>ผู้ดูแลระบบ</h1>${err?`<p class="badt">${err}</p>`:''}<label for="adm-key">รหัสผู้ดูแล</label><input id="adm-key" type="password" autocomplete="current-password"><button class="btn" id="adm-go">เข้าสู่ระบบ</button><a href="./" class="msg">กลับหน้า Dashboard</a>`);const go=async()=>{const v=document.getElementById('adm-key').value;try{sessionStorage.setItem(KEY,v)}catch(e){}try{await api({a:'auth'});location.reload()}catch(e){try{sessionStorage.removeItem(KEY)}catch(x){}askKey('รหัสไม่ถูกต้อง')}};document.getElementById('adm-go').onclick=go;document.getElementById('adm-key').onkeydown=e=>{if(e.key==='Enter')go()};document.getElementById('adm-key').focus()}
-const load=src=>new Promise((res,rej)=>{const s=document.createElement('script');s.async=false;s.src=src+'?v='+(window.FLEET_V||4);s.onload=res;s.onerror=rej;document.body.appendChild(s)});
+const load=src=>new Promise((res,rej)=>{const s=document.createElement('script');s.async=false;s.src=src+'?v='+(window.FLEET_V||5);s.onload=res;s.onerror=rej;document.body.appendChild(s)});
 /* months kept in this browser (IndexedDB) and reused while the data version from the server is unchanged */
 const IDB=(()=>{let p=null;const open=()=>p||(p=new Promise((res,rej)=>{try{const r=indexedDB.open('nimex-fleet',1);r.onupgradeneeded=()=>r.result.createObjectStore('m');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}}));
  return{get:async k=>{try{const db=await open();return await new Promise(res=>{const q=db.transaction('m').objectStore('m').get(k);q.onsuccess=()=>res(q.result||null);q.onerror=()=>res(null)})}catch(e){return null}},
   put:async(k,v)=>{try{const db=await open();db.transaction('m','readwrite').objectStore('m').put(v,k)}catch(e){}}}})();
 window.getMonth=async m=>{const ver=window.DATA&&window.DATA.ver;if(ver){const c=await IDB.get(m);if(c&&c.ver===ver&&c.j)return c.j}
  const j=await (await fetch(url('a=month&m='+m))).json();if(!j||j.error)throw new Error('month');if(ver)IDB.put(m,{ver,j});return j};
-window.loadLib=src=>new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>rej(new Error('lib'));document.head.appendChild(s)});
+const load1=src=>new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=()=>{s.remove();rej(new Error('lib'))};document.head.appendChild(s)});
+window.loadLib=async src=>{const L=Array.isArray(src)?src:[src];for(const u of L){try{await load1(u);return}catch(e){}}throw new Error('lib')};
 const url=q=>window.FLEET_API+(window.FLEET_API.includes('?')?'&':'?')+q;
 async function start(){const wantAdmin=location.hash==='#admin',key=getKey();
  if(!window.FLEET_API){bootMsg('<h1>ยังไม่ได้ตั้งค่า</h1><p>ยังไม่ได้ใส่ที่อยู่ระบบข้อมูลใน config.js</p>');return}
