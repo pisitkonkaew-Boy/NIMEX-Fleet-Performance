@@ -1,0 +1,73 @@
+/** NIMEX Fleet Intelligence API — bound to one Google Sheet that holds every report.
+ *  Set Script Property ADMIN_KEY (Project Settings > Script Properties). The key is never stored in this file.
+ *  Public GET : ?a=meta  -> DC master, settings, upload history, months and dates in the system
+ *               ?a=month&m=yyyy-mm -> the rows of that month from every table
+ *  Admin POST : auth · admin · upsert (replace rows of given dates/months, then append) · upload (history row) · settings
+ */
+var T={
+  dcs:    {name:'DCs',     cols:['code','name','pa','zone','size','group'],text:[1,2,4,5,6]},
+  bills:  {name:'Bills',   cols:['due','dc','bt','spare','n','cust','onTime','onTimePlusCustomer','arrived','arrivedOnTime','arrivedPlusCustomer','spare2'],text:[1,2,3],date:0},
+  od:     {name:'OD',      cols:['due','oz','dz','bt','n','cust','onTime','onTimePlusCustomer','arrived','arrivedOnTime','arrivedPlusCustomer','spare'],text:[1,2,3,4],date:0},
+  reasons:{name:'Reasons', cols:['due','dc','bt','main','sub','n','notOnTime'],text:[1,2,3,4,5],date:0},
+  trips:  {name:'Trips',   cols:['id','date','time','ret','plate','dc','vt','rel','pt','route','bills','delivered','failCustomer','dist','mileOut','mileIn','rev','revDelivered','billsDry','billsCold','pieces','piecesDelivered','deliveredDry','deliveredCold','piecesDry','piecesCold','piecesDeliveredDry','piecesDeliveredCold'],text:[1,2,3,4,5,6,7,8,9,10],date:1},
+  routes: {name:'Routes',  cols:['code','name'],text:[1,2]},
+  cost:   {name:'Cost',    cols:['date','dc','vt','rel','trips','bAB','xAB','rAB','cAB','bCC','xCC','rCC','cCC','pbAB','pxAB','prAB','pcAB','pbCC','pxCC','prCC','pcCC'],text:[1,2,3,4],date:0},
+  tcost:  {name:'TripCost',cols:['date','id','revenue','wage'],text:[1,2],date:0},
+  plates: {name:'Plates',  cols:['month','plate','dc','vt','rel','trips','rev','cost'],text:[1,2,3,4,5],date:0},
+  uploads:{name:'Uploads', cols:['report','files','rows','range','days','at'],text:[1,2,4,6]},
+  log:    {name:'Log',     cols:['time','action','detail'],text:[]}
+};
+var NUM_FROM={dcs:2,bills:3,od:4,reasons:5,trips:10,routes:99,cost:4,tcost:2,plates:5,uploads:2};
+function ss_(){return SpreadsheetApp.getActiveSpreadsheet()}
+function tab_(k){var s=ss_(),d=T[k],t=s.getSheetByName(d.name);if(!t){t=s.insertSheet(d.name);t.getRange(1,1,1,d.cols.length).setValues([d.cols]).setFontWeight('bold');t.setFrozenRows(1)}return t}
+function d_(v){if(v instanceof Date)return Utilities.formatDate(v,'Asia/Bangkok','yyyy-MM-dd');return String(v)}
+function clean_(k,r){var n=NUM_FROM[k];return r.map(function(v,i){if(i>=n&&k!=='uploads'){if(v===''||v===null)return null;var x=Number(v);return isNaN(x)?v:x}return d_(v)})}
+function read_(k){var t=tab_(k),n=t.getLastRow(),w=T[k].cols.length;return n<2?[]:t.getRange(2,1,n-1,w).getValues().map(function(r){return clean_(k,r)})}
+function write_(k,rows){var t=tab_(k),n=t.getLastRow(),w=T[k].cols.length;if(n>1)t.getRange(2,1,n-1,w).clearContent();append_(k,rows,true)}
+function append_(k,rows,fresh){if(!rows.length)return;var t=tab_(k),w=T[k].cols.length,start=fresh?2:t.getLastRow()+1;
+  rows=rows.map(function(r){var a=r.slice(0,w);while(a.length<w)a.push('');return a.map(function(v){return v===null?'':v})});
+  T[k].text.forEach(function(c){t.getRange(start,c,rows.length,1).setNumberFormat('@')});t.getRange(start,1,rows.length,w).setValues(rows)}
+function json_(o){return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON)}
+function props_(){return PropertiesService.getScriptProperties()}
+/* ---- cache: gzip + base64 in chunks, cleared on every write ---- */
+function cacheGet_(key){var c=CacheService.getScriptCache(),n=c.get(key+'-n');if(!n)return null;var ks=[];for(var i=0;i<+n;i++)ks.push(key+'-'+i);var all=c.getAll(ks),b='';for(i=0;i<ks.length;i++){if(!all[ks[i]])return null;b+=all[ks[i]]}return Utilities.ungzip(Utilities.newBlob(Utilities.base64Decode(b),'application/x-gzip')).getDataAsString('UTF-8')}
+function cachePut_(key,s){var b=Utilities.base64Encode(Utilities.gzip(Utilities.newBlob(s,'text/plain')).getBytes()),o={},n=0;for(var i=0;i<b.length;i+=90000)o[key+'-'+(n++)]=b.substr(i,90000);if(n<=200){o[key+'-n']=String(n);CacheService.getScriptCache().putAll(o,21600);var L=JSON.parse(props_().getProperty('CACHE_KEYS')||'[]');if(L.indexOf(key)<0){L.push(key);props_().setProperty('CACHE_KEYS',JSON.stringify(L))}}}
+function cacheClear_(){var L=JSON.parse(props_().getProperty('CACHE_KEYS')||'[]'),c=CacheService.getScriptCache();L.forEach(function(k){c.remove(k+'-n')});props_().setProperty('CACHE_KEYS','[]')}
+function cached_(key,fn){var s=null;try{s=cacheGet_(key)}catch(e){}if(!s){s=JSON.stringify(fn());try{cachePut_(key,s)}catch(e){}}return ContentService.createTextOutput(s).setMimeType(ContentService.MimeType.JSON)}
+/* dates in the system, kept in Script Properties so ?a=meta never reads the big tables */
+function index_(){var o={};['bills','trips','cost'].forEach(function(k){var i=T[k].date,s={};read_(k).forEach(function(r){s[String(r[i]).slice(0,10)]=1});o[k]=Object.keys(s).sort()});props_().setProperty('DATES',JSON.stringify(o));return o}
+function meta_(){var D=JSON.parse(props_().getProperty('DATES')||'null')||index_(),m={};['bills','trips','cost'].forEach(function(k){D[k].forEach(function(d){m[d.slice(0,7)]=1})});
+  return{ver:props_().getProperty('DATA_VER')||'',dcs:read_('dcs'),settings:JSON.parse(props_().getProperty('SETTINGS')||'{}'),uploads:read_('uploads'),dates:D,months:Object.keys(m).sort(),updated:Utilities.formatDate(new Date(),'Asia/Bangkok','d/M/yyyy HH:mm')}}
+/* rows of many months in one pass over each table (reading a sheet is the slow part) */
+function months_(ms){var W={};ms.forEach(function(m){W[m]={bills:[],od:[],reasons:[],trips:[],cost:[],tcost:[],plates:[],routes:{}}});
+  ['bills','od','reasons','trips','cost','tcost'].forEach(function(k){var i=T[k].date;read_(k).forEach(function(r){var o=W[String(r[i]).slice(0,7)];if(o)o[k].push(r)})});
+  read_('plates').forEach(function(r){var o=W[r[0]];if(o)o.plates.push(r)});var R=read_('routes');
+  ms.forEach(function(m){var o=W[m],used={};o.trips.forEach(function(t){used[t[9]]=1});R.forEach(function(r){if(used[r[0]])o.routes[r[0]]=r[1]})});return W}
+function month_(m){return months_([m])[m]}
+/* build the cache of meta and every month so viewers never wait for a cold read; run by a time trigger and after uploads */
+function warmAll(){var me=meta_();cachePut_('meta',JSON.stringify(me));var W=months_(me.months);me.months.forEach(function(m){cachePut_('m-'+m,JSON.stringify(W[m]))});return me.months.length}
+/* run once from the editor: keeps the cache warm every 4 hours (cache lasts 6 hours) */
+function setupWarm(){ScriptApp.getProjectTriggers().forEach(function(t){if(t.getHandlerFunction()==='warmAll')ScriptApp.deleteTrigger(t)});ScriptApp.newTrigger('warmAll').timeBased().everyHours(4).create();warmAll()}
+function doGet(e){var a=(e&&e.parameter&&e.parameter.a)||'meta';
+  if(a==='month'){var m=String(e.parameter.m||'');if(!/^\d{4}-\d{2}$/.test(m))return json_({error:'bad_month'});return cached_('m-'+m,function(){return month_(m)})}
+  return cached_('meta',meta_)}
+function log_(a,d){append_('log',[[Utilities.formatDate(new Date(),'Asia/Bangkok','d/M/yyyy HH:mm'),a,String(d).slice(0,300)]])}
+function doPost(e){var b;try{b=JSON.parse(e.postData.contents)}catch(x){return json_({ok:false,error:'bad_request'})}
+  var key=props_().getProperty('ADMIN_KEY');if(!key||!b.key||b.key!==key){Utilities.sleep(1200);return json_({ok:false,error:'denied'})}
+  if(b.a==='auth')return json_({ok:true});
+  if(b.a==='admin')return json_({ok:true,log:read_('log').slice(-30)});
+  if(b.a==='warm'){var n=warmAll();return json_({ok:true,months:n})}
+  var lock=LockService.getScriptLock();if(!lock.tryLock(30000))return json_({ok:false,error:'busy'});
+  try{
+    if(b.a==='upsert'){var k=b.table;if(!T[k]||k==='uploads'||k==='log')return json_({ok:false,error:'bad_table'});var rows=b.rows||[];
+      if(b.replaceAll){write_(k,rows)}
+      else if(b.keys&&b.keys.length){var set={};b.keys.forEach(function(x){set[x]=1});var i=k==='routes'||k==='dcs'?0:T[k].date;
+        var keep=read_(k).filter(function(r){var v=String(r[i]);return !set[k==='plates'||k==='routes'?v:v.slice(0,10)]});write_(k,keep.concat(rows))}
+      else append_(k,rows);
+      log_('upsert '+k,rows.length+' rows'+(b.keys&&b.keys.length&&b.keys!=='*'?' · '+b.keys.length+' keys':b.replaceAll?' · replace all':''))}
+    else if(b.a==='upload'){append_('uploads',[b.row]);log_('upload',b.row.slice(0,4).join(' · '))}
+    else if(b.a==='settings'){props_().setProperty('SETTINGS',JSON.stringify(b.settings||{}));log_('settings','')}
+    else return json_({ok:false,error:'unknown'});
+    if(b.a==='upsert'&&['bills','trips','cost'].indexOf(b.table)>=0)index_();
+    props_().setProperty('DATA_VER',String(Date.now()));cacheClear_();return json_({ok:true})
+  }finally{lock.releaseLock()}}

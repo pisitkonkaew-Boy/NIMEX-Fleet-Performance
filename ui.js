@@ -165,7 +165,7 @@ const LOADED=new Set();
 function mergeMonth(j){const D=window.DATA;['bills','od','reasons','trips','cost','plates','tcost'].forEach(k=>{D[k]=(D[k]||[]).concat(j[k]||[])});Object.assign(D.routes=D.routes||{},j.routes||{})}
 async function ensureMonths(ms){const need=ms.filter(m=>m&&!LOADED.has(m)&&(window.DATA.months||[]).includes(m));if(!need.length)return false;
  const st=$('#loading');if(st){st.hidden=false;st.textContent='กำลังโหลดข้อมูล '+need.map(m=>monthLabel(m)).join(', ')+'…'}
- for(const m of need){const j=await (await fetch(window.FLEET_API+(window.FLEET_API.includes('?')?'&':'?')+'a=month&m='+m)).json();mergeMonth(j);LOADED.add(m)}
+ const J=await Promise.all(need.map(m=>window.getMonth(m)));J.forEach((j,i)=>{mergeMonth(j);LOADED.add(need[i])})
  if(st)st.hidden=true;rebuild();return true}
 function rebuild(){MD=makeModel(window.DATA,{hide:HIDE});window.MD=MD}
 const prevMonth=m=>{const[y,mm]=m.split('-').map(Number);return mm===1?`${y-1}-12`:`${y}-${String(mm-1).padStart(2,'0')}`};
