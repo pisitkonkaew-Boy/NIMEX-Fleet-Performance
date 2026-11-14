@@ -36,8 +36,9 @@ function cacheClear_(){var L=JSON.parse(props_().getProperty('CACHE_KEYS')||'[]'
 function cached_(key,fn){var s=null;try{s=cacheGet_(key)}catch(e){}if(!s){s=JSON.stringify(fn());try{cachePut_(key,s)}catch(e){}}return ContentService.createTextOutput(s).setMimeType(ContentService.MimeType.JSON)}
 /* dates in the system, kept in Script Properties so ?a=meta never reads the big tables */
 function index_(){var o={};['bills','trips','cost'].forEach(function(k){var i=T[k].date,s={};read_(k).forEach(function(r){s[String(r[i]).slice(0,10)]=1});o[k]=Object.keys(s).sort()});props_().setProperty('DATES',JSON.stringify(o));return o}
+function ver_(){var v=props_().getProperty('DATA_VER');if(!v){v=String(Date.now());props_().setProperty('DATA_VER',v)}return v}
 function meta_(){var D=JSON.parse(props_().getProperty('DATES')||'null')||index_(),m={};['bills','trips','cost'].forEach(function(k){D[k].forEach(function(d){m[d.slice(0,7)]=1})});
-  return{ver:props_().getProperty('DATA_VER')||'',dcs:read_('dcs'),settings:JSON.parse(props_().getProperty('SETTINGS')||'{}'),uploads:read_('uploads'),dates:D,months:Object.keys(m).sort(),updated:Utilities.formatDate(new Date(),'Asia/Bangkok','d/M/yyyy HH:mm')}}
+  return{ver:ver_(),dcs:read_('dcs'),settings:JSON.parse(props_().getProperty('SETTINGS')||'{}'),uploads:read_('uploads'),dates:D,months:Object.keys(m).sort(),updated:Utilities.formatDate(new Date(),'Asia/Bangkok','d/M/yyyy HH:mm')}}
 /* rows of many months in one pass over each table (reading a sheet is the slow part) */
 function months_(ms){var W={};ms.forEach(function(m){W[m]={bills:[],od:[],reasons:[],trips:[],cost:[],tcost:[],plates:[],routes:{}}});
   ['bills','od','reasons','trips','cost','tcost'].forEach(function(k){var i=T[k].date;read_(k).forEach(function(r){var o=W[String(r[i]).slice(0,7)];if(o)o[k].push(r)})});
@@ -45,12 +46,12 @@ function months_(ms){var W={};ms.forEach(function(m){W[m]={bills:[],od:[],reason
   ms.forEach(function(m){var o=W[m],used={};o.trips.forEach(function(t){used[t[9]]=1});R.forEach(function(r){if(used[r[0]])o.routes[r[0]]=r[1]})});return W}
 function month_(m){return months_([m])[m]}
 /* build the cache of meta and every month so viewers never wait for a cold read; run by a time trigger and after uploads */
-function warmAll(){var me=meta_();cachePut_('meta',JSON.stringify(me));var W=months_(me.months);me.months.forEach(function(m){cachePut_('m-'+m,JSON.stringify(W[m]))});return me.months.length}
+function warmAll(){var me=meta_();cachePut_('meta2',JSON.stringify(me));var W=months_(me.months);me.months.forEach(function(m){cachePut_('m2-'+m,JSON.stringify(W[m]))});return me.months.length}
 /* run once from the editor: keeps the cache warm every 4 hours (cache lasts 6 hours) */
 function setupWarm(){ScriptApp.getProjectTriggers().forEach(function(t){if(t.getHandlerFunction()==='warmAll')ScriptApp.deleteTrigger(t)});ScriptApp.newTrigger('warmAll').timeBased().everyHours(4).create();warmAll()}
 function doGet(e){var a=(e&&e.parameter&&e.parameter.a)||'meta';
-  if(a==='month'){var m=String(e.parameter.m||'');if(!/^\d{4}-\d{2}$/.test(m))return json_({error:'bad_month'});return cached_('m-'+m,function(){return month_(m)})}
-  return cached_('meta',meta_)}
+  if(a==='month'){var m=String(e.parameter.m||'');if(!/^\d{4}-\d{2}$/.test(m))return json_({error:'bad_month'});return cached_('m2-'+m,function(){return month_(m)})}
+  return cached_('meta2',meta_)}
 function log_(a,d){append_('log',[[Utilities.formatDate(new Date(),'Asia/Bangkok','d/M/yyyy HH:mm'),a,String(d).slice(0,300)]])}
 function doPost(e){var b;try{b=JSON.parse(e.postData.contents)}catch(x){return json_({ok:false,error:'bad_request'})}
   var key=props_().getProperty('ADMIN_KEY');if(!key||!b.key||b.key!==key){Utilities.sleep(1200);return json_({ok:false,error:'denied'})}
